@@ -1,0 +1,27 @@
+name: Daily AdafruitIO → Telegram Report
+
+on:
+  schedule:
+    - cron: "0 11 * * *"  # 08:00 Chile
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      IO_USERNAME: ${{ secrets.IO_USERNAME }}
+      IO_KEY: ${{ secrets.IO_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -r cloud/requirements.txt
+      - name: Run daily report
+        run: |
+          python cloud/report.py
