@@ -1,4 +1,4 @@
-name: Daily AdafruitIO → Telegram Report
+name: Agua
 
 on:
   schedule:
@@ -24,4 +24,4 @@ jobs:
           pip install -r requirements.txt
       - name: Run daily report
         run: |
-          python cloud/report.py
+          python agua.py
