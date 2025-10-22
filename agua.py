@@ -35,7 +35,9 @@ BASE_URL = f"https://io.adafruit.com/api/v2/{IO_USERNAME}/feeds"
 # === Funciones auxiliares ===
 def fetch_feed(feed_key, start, end):
     """Descarga datos del feed en el rango de tiempo indicado."""
-    url = f"{BASE_URL}/{feed_key}/data"
+    # Asegurar slug válido para la API (replace . _ por - y a minúsculas)
+    feed_slug = feed_key.replace(".", "-").replace("_", "-").lower()
+    url = f"{BASE_URL}/{feed_slug}/data"
     headers = {"X-AIO-Key": IO_KEY}
     params = {"start_time": start, "end_time": end, "include": "value,created_at"}
     r = requests.get(url, headers=headers, params=params, timeout=30)
@@ -88,7 +90,9 @@ def telegram_send_text(text):
     """Envía un mensaje de texto a Telegram."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
-    requests.post(url, json=payload, timeout=30)
+    r = requests.post(url, json=payload, timeout=30)
+    if r.status_code != 200:
+        print(f"⚠️ Error enviando texto a Telegram: {r.text}")
 
 
 def telegram_send_photo(image_path, caption=None):
@@ -97,7 +101,9 @@ def telegram_send_photo(image_path, caption=None):
     with open(image_path, "rb") as img:
         files = {"photo": img}
         data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption or ""}
-        requests.post(url, files=files, data=data, timeout=30)
+        r = requests.post(url, files=files, data=data, timeout=30)
+        if r.status_code != 200:
+            print(f"⚠️ Error enviando imagen a Telegram: {r.text}")
 
 
 def make_plot(feed, values):
