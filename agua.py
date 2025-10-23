@@ -15,16 +15,18 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 IO_USERNAME = os.getenv("IO_USERNAME")
 IO_KEY = os.getenv("IO_KEY")
 
-# === Feeds correctos según tu cuenta Adafruit ===
+# === Feeds correctos según tu nueva estructura en Adafruit IO ===
 FEEDS = (
-    "weather-dot-temperature-c,"
-    "weather-dot-dew-point-c,"
-    "weather-dot-pressure-hpa,"
-    "weather-dot-humidity-pct,"
-    "weather-dot-heat-index-c,"
-    "weather-dot-air-density-kgm3,"
-    "weather-dot-altitude-m,"
-    "weather-dot-relay-control"
+    "estacion.temperatura,"
+    "estacion.humedad,"
+    "estacion.presion,"
+    "estacion.altitud,"
+    "estacion.punto_rocio,"
+    "estacion.sensacion_termica,"
+    "estacion.densidad_aire,"
+    "estacion.humedad_suelo,"
+    "estacion.luz,"
+    "estacion.rele_control"
 )
 
 if not all([TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, IO_USERNAME, IO_KEY]):
@@ -36,7 +38,7 @@ BASE_URL = f"https://io.adafruit.com/api/v2/{IO_USERNAME}/feeds"
 
 # === Funciones ===
 def fetch_feed(feed_key, start, end):
-    """Descarga datos del feed."""
+    """Descarga datos de un feed en Adafruit IO entre start y end."""
     url = f"{BASE_URL}/{feed_key}/data"
     headers = {"X-AIO-Key": IO_KEY}
     params = {"start_time": start, "end_time": end}
@@ -47,7 +49,7 @@ def fetch_feed(feed_key, start, end):
 
 
 def parse_feed_data(data):
-    """Convierte datos crudos en lista de (timestamp, valor)."""
+    """Convierte datos crudos en lista (timestamp, valor)."""
     out = []
     for d in data:
         try:
@@ -60,7 +62,7 @@ def parse_feed_data(data):
 
 
 def stats(values):
-    """Estadísticas básicas."""
+    """Estadísticas básicas de una lista de valores."""
     if not values:
         return None
     arr = [v for _, v in values]
@@ -76,6 +78,7 @@ def stats(values):
 
 
 def trend_symbol(first, last):
+    """Retorna flecha de tendencia (↑ ↓ →)."""
     if first is None or last is None:
         return "→"
     delta = last - first
@@ -85,7 +88,7 @@ def trend_symbol(first, last):
 
 
 def make_plot(feed, values):
-    """Genera gráfico simple."""
+    """Genera un gráfico temporal simple y lo guarda en /tmp."""
     if not values:
         return None
     x = [t for t, _ in values]
@@ -93,7 +96,7 @@ def make_plot(feed, values):
 
     plt.figure(figsize=(6, 3))
     plt.plot(x, y, linewidth=1.5)
-    plt.title(feed.replace("weather-dot-", "").replace("-", " ").title())
+    plt.title(feed.replace("estacion.", "").replace("_", " ").title())
     plt.xlabel("Hora (Chile)")
     plt.ylabel("Valor")
     plt.grid(True)
@@ -106,13 +109,13 @@ def make_plot(feed, values):
 
 
 def telegram_send_text(msg):
-    """Envia texto a Telegram."""
+    """Envía texto a Telegram."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "Markdown"})
 
 
 def telegram_send_photo(path, caption=""):
-    """Envia imagen a Telegram."""
+    """Envía una imagen a Telegram."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     with open(path, "rb") as f:
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption}, files={"photo": f})
@@ -124,7 +127,7 @@ def main():
     start = (now - dt.timedelta(days=1)).astimezone(pytz.UTC).isoformat()
     end = now.astimezone(pytz.UTC).isoformat()
 
-    summary = [f"*🌦 Reporte diario Adafruit IO ({now.strftime('%Y-%m-%d')})*", ""]
+    summary = [f"*📊 Reporte diario estación ({now.strftime('%Y-%m-%d')})*", ""]
 
     for feed in FEEDS.split(","):
         try:
@@ -133,24 +136,40 @@ def main():
             st = stats(vals)
 
             if not st:
-                summary.append(f"• `{feed}`: sin datos")
+                summary.append(f"• `{feed}`: sin datos 📭")
                 continue
 
             trend = trend_symbol(st["first"], st["last"])
 
-            if "relay" in feed:
-                estado = "ON 🔌" if st["last"] >= 1 else "OFF ⚡"
+            if "rele" in feed:
+                estado = "💧 Riego ACTIVADO" if st["last"] >= 1 else "💤 Riego APAGADO"
                 summary.append(f"• `{feed}` → {estado}")
                 continue
 
+            unidad = {
+                "temperatura": "°C",
+                "humedad": "%",
+                "presion": "hPa",
+                "altitud": "m",
+                "punto_rocio": "°C",
+                "sensacion_termica": "°C",
+                "densidad_aire": "kg/m³",
+                "humedad_suelo": "%",
+                "luz": "lux",
+            }
+
+            # Determinar la unidad según el nombre del feed
+            key = feed.replace("estacion.", "")
+            suf = unidad.get(key, "")
+
             summary.append(
-                f"• `{feed}` → n={st['n']}, min={st['min']:.2f}, max={st['max']:.2f}, "
-                f"media={st['mean']:.2f}, σ={st['std']:.2f}, tendencia {trend}"
+                f"• `{key}` → n={st['n']}, min={st['min']:.2f}{suf}, max={st['max']:.2f}{suf}, "
+                f"media={st['mean']:.2f}{suf}, σ={st['std']:.2f}, tendencia {trend}"
             )
 
             img = make_plot(feed, vals)
             if img:
-                telegram_send_photo(img, caption=feed)
+                telegram_send_photo(img, caption=f"{key.title()} ({suf})")
 
         except Exception as e:
             summary.append(f"• `{feed}`: error {e}")
