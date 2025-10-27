@@ -37,15 +37,38 @@ BASE_URL = f"https://io.adafruit.com/api/v2/{IO_USERNAME}/feeds"
 
 
 # === Funciones ===
-def fetch_feed(feed_key, start, end):
-    """Descarga datos de un feed en Adafruit IO entre start y end."""
+def fetch_feed(feed_key, start, end, limit=1000):
+    """Descarga hasta todos los datos (paginando) de un feed."""
     url = f"{BASE_URL}/{feed_key}/data"
     headers = {"X-AIO-Key": IO_KEY}
-    params = {"start_time": start, "end_time": end}
-    r = requests.get(url, headers=headers, params=params, timeout=30)
-    if r.status_code != 200:
-        raise Exception(f"Error {r.status_code}: {r.text}")
-    return r.json()
+
+    all_data = []
+    page = 1
+
+    while True:
+        params = {
+            "start_time": start,
+            "end_time": end,
+            "limit": limit,
+            "page": page
+        }
+        r = requests.get(url, headers=headers, params=params, timeout=30)
+        if r.status_code != 200:
+            raise Exception(f"Error {r.status_code}: {r.text}")
+
+        data = r.json()
+        if not data:
+            break
+
+        all_data.extend(data)
+
+        # Si recibes menos de 'limit', no hay más páginas
+        if len(data) < limit:
+            break
+
+        page += 1
+
+    return all_data
 
 
 def parse_feed_data(data):
