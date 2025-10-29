@@ -87,8 +87,8 @@ def trend_symbol(first, last, threshold=0.1):
 
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
-import numpy as np
 from scipy.ndimage import gaussian_filter1d
+import numpy as np
 
 def make_plot(feed, values):
     """Gráfico temporal con formato profesional (8–8, 30min, con unidad en eje Y)."""
@@ -111,6 +111,9 @@ def make_plot(feed, values):
 
     # --- Extraer datos ---
     x, y = zip(*values)
+    y = np.array(y, dtype=float)
+
+    # --- Suavizado gaussiano ---
     y_smooth = gaussian_filter1d(y, sigma=1.2)
 
     # --- Inferir nombre y unidad ---
@@ -134,28 +137,33 @@ def make_plot(feed, values):
     ax.set_title(key.title(), fontsize=12, fontweight="bold", pad=8)
     ax.set_xlabel("Hora", fontsize=9)
     ax.set_ylabel(f"Valor {unidad}", fontsize=9)
-    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.4)
 
-    # --- Eje X: horas cada 2 h ---
+    # --- Eje X: formato y rango ---
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
     plt.setp(ax.get_xticklabels(), rotation=0, ha="center", fontsize=8)
 
+    # Limitar eje X al rango observado
+    xmin, xmax = min(x), max(x)
+    ax.set_xlim(xmin, xmax)
+
     # --- Eje Y: escalado limpio ---
     ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=6))
-    ax.margins(x=0.02, y=0.1)
+    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.4)
 
     # --- Fondo y diseño ---
     ax.set_facecolor("white")
     fig.patch.set_facecolor("white")
-    plt.tight_layout(pad=1.5)
+
+    # --- Márgenes y diseño compacto ---
+    ax.margins(x=0.02, y=0.05)
+    plt.tight_layout(pad=1.2)
 
     # --- Guardar imagen ---
     path = Path(f"/tmp/{feed}.png")
     plt.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return str(path)
-
 
 
 
