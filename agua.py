@@ -233,8 +233,10 @@ def main():
     
 
     # Enviar en hora local con offset de Chile (Adafruit interpreta correctamente)
-    start_iso = start_local.isoformat()
-    end_iso   = end_local.isoformat()
+# API en UTC
+    start_iso = start_local.astimezone(pytz.UTC).isoformat()
+    end_iso   = end_local.astimezone(pytz.UTC).isoformat()
+
 
 
 
