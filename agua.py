@@ -93,25 +93,25 @@ def fetch_feed(feed_key, start_iso, end_iso):
 # 🧮 PARSING & DOWNSAMPLING
 # =========================
 def parse_raw(data):
-    """Convierte a [(t_local, valor_float)] sin doble conversión."""
+    """Convierte datos a hora local sin aplicar doble corrección."""
     parsed = []
     for d in data:
         try:
             v = float(d["value"])
             t_raw = d["created_at"]
 
-            # Detectar si el timestamp ya incluye zona horaria
-            if "Z" in t_raw or t_raw.endswith("+00:00"):
-                # UTC → convertir a Chile
-                t = dt.datetime.fromisoformat(t_raw.replace("Z", "+00:00")).astimezone(TZ)
-            else:
-                # Ya local → dejar tal cual
+            # Si el timestamp ya está en hora local (-03:00), no lo convertimos
+            if t_raw.endswith("-03:00"):
                 t = dt.datetime.fromisoformat(t_raw)
-                if t.tzinfo is None:
-                    t = TZ.localize(t)
+            else:
+                # Si viene en UTC ("Z" o "+00:00"), convertir a Chile
+                t = dt.datetime.fromisoformat(t_raw.replace("Z", "+00:00")).astimezone(TZ)
+
             parsed.append((t, v))
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ Error parseando {d.get('created_at', '?')} → {e}")
             continue
+
     return sorted(parsed, key=lambda x: x[0])
 
 
