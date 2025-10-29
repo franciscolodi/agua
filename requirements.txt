@@ -2,3 +2,5 @@ requests
 pytz
 matplotlib
 statistics
+scipy
+
