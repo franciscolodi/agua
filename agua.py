@@ -113,7 +113,7 @@ def downsample_30min(values, start_local, end_local, tolerance_minutes=15):
     if not values:
         return []
 
-    step = dt.timedelta(minutes=30)
+    step = dt.timedelta(minutes=60)
     tol = dt.timedelta(minutes=tolerance_minutes)
 
     # slots 8→8 exactos
