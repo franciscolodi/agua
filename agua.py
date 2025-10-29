@@ -242,8 +242,9 @@ def main():
         start_local = today_8am - dt.timedelta(days=2)
         end_local = today_8am - dt.timedelta(days=1)
     # API en UTC
-    start_iso = start_local.astimezone(pytz.UTC).isoformat()
-    end_iso   = end_local.astimezone(pytz.UTC).isoformat()
+    start_iso = start_local.isoformat()
+    end_iso   = end_local.isoformat()
+
 
     print(f"📆 Rango temporal: {start_local:%d-%b %H:%M} → {end_local:%d-%b %H:%M}")
 
