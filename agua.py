@@ -86,42 +86,76 @@ def trend_symbol(first, last, threshold=0.1):
     return "↑" if delta > 0 else "↓"
 
 import matplotlib.dates as mdates
+import matplotlib.ticker as ticker
+import numpy as np
+from scipy.ndimage import gaussian_filter1d
 
 def make_plot(feed, values):
-    """Genera gráfico temporal con eje X por hora y estilo legible."""
+    """Gráfico temporal con formato profesional (8–8, 30min, con unidad en eje Y)."""
     if not values:
         return None
 
+    # === Diccionario de unidades ===
+    unidades = {
+        "temperatura": "°C",
+        "humedad": "%",
+        "presion": "hPa",
+        "altitud": "m",
+        "punto_rocio": "°C",
+        "sensacion_termica": "°C",
+        "densidad_aire": "kg/m³",
+        "humedad_suelo": "%",
+        "luz": "lux",
+        "rele_control": "",
+    }
+
+    # --- Extraer datos ---
     x, y = zip(*values)
+    y_smooth = gaussian_filter1d(y, sigma=1.2)
 
-    fig, ax = plt.subplots(figsize=(6.5, 3.2), dpi=130)
-    ax.plot(x, y, linewidth=1.8, color="#0072B2", alpha=0.9)
+    # --- Inferir nombre y unidad ---
+    key = (
+        feed.replace("estacion.", "")
+            .replace("estacion-dot-", "")
+            .replace("_", " ")
+            .strip()
+    )
+    unidad = ""
+    for k, u in unidades.items():
+        if k.replace("_", " ") in key:
+            unidad = u
+            break
 
-    # Título mejorado
-    titulo = feed.replace("estacion.", "").replace("estacion-dot-", "").replace("_", " ").title()
-    ax.set_title(titulo, fontsize=11, fontweight="bold", pad=10)
+    # --- Configurar figura ---
+    fig, ax = plt.subplots(figsize=(6.8, 3.2), dpi=130)
+    ax.plot(x, y_smooth, linewidth=1.8, color="#007ACC", alpha=0.9)
 
-    # Etiquetas
+    # --- Estética general ---
+    ax.set_title(key.title(), fontsize=12, fontweight="bold", pad=8)
     ax.set_xlabel("Hora", fontsize=9)
-    ax.set_ylabel("Valor", fontsize=9)
+    ax.set_ylabel(f"Valor {unidad}", fontsize=9)
+    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.4)
 
-    # Eje X formateado en horas
+    # --- Eje X: horas cada 2 h ---
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", fontsize=8)
+    plt.setp(ax.get_xticklabels(), rotation=0, ha="center", fontsize=8)
 
-    # Eje Y con cuadrícula suave
-    ax.grid(alpha=0.3, linestyle="--")
-
-    # Márgenes visuales
+    # --- Eje Y: escalado limpio ---
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=6))
     ax.margins(x=0.02, y=0.1)
-    plt.tight_layout()
 
-    # Guardar
+    # --- Fondo y diseño ---
+    ax.set_facecolor("white")
+    fig.patch.set_facecolor("white")
+    plt.tight_layout(pad=1.5)
+
+    # --- Guardar imagen ---
     path = Path(f"/tmp/{feed}.png")
     plt.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return str(path)
+
 
 
 
