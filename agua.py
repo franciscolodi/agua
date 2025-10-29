@@ -82,32 +82,23 @@ def safe_get(url, params, retries=4, backoff=1.5, timeout=20):
             time.sleep(sleep_s)
     return []
 
+# ========= FETCH con paginación (obligatorio para >1000 puntos) =========
 def fetch_feed(feed_key, start_iso, end_iso):
-    """Descarga TODOS los datos del feed en el rango (pagina de 1000 en 1000)."""
+    """Descarga TODOS los datos del feed entre start/end, paginando de 1000 en 1000."""
     url = f"{BASE_URL}/{feed_key}/data"
     limit = 1000
     page = 1
     out = []
-
     while True:
-        params = {
-            "start_time": start_iso,  # en UTC (ya lo haces)
-            "end_time": end_iso,      # en UTC
-            "limit": limit,
-            "page": page,
-            # opcional, si tu cuenta lo soporta:
-            # "include": "value,created_at",
-            # "direction": "asc"
-        }
-        print(f"📡 {feed_key} page={page}")
+        params = {"start_time": start_iso, "end_time": end_iso, "limit": limit, "page": page}
         batch = safe_get(url, params)
+        print(f"📡 {feed_key} page={page} -> {len(batch)}")
         if not batch:
             break
         out.extend(batch)
         if len(batch) < limit:
             break
         page += 1
-
     return out
 
 
@@ -140,46 +131,39 @@ def parse_raw(data):
 
 
 
+# ========= Downsampling exacto a 30 min (O(n)) =========
 def downsample_30min(values, start_local, end_local, tolerance_minutes=15):
     """
-    Un punto cada 30 min (HH:00 / HH:30). Toma el valor más cercano a la marca dentro de ±tolerance.
-    O(n): recorre una vez.
+    Un punto por marca de 30 min (HH:00/HH:30) en [start_local, end_local].
+    Toma el valor más cercano dentro de ±tolerance.
     """
     if not values:
         return []
-
     step = dt.timedelta(minutes=30)
     tol = dt.timedelta(minutes=tolerance_minutes)
 
-    # slots 8→8 exactos
+    # Construir marcas exactas cada 30'
     slots = []
     t = start_local
     while t <= end_local:
         slots.append(t)
         t += step
 
-    result = []
-    idx = 0
-    n = len(values)
-
+    result, idx, n = [], 0, len(values)
     for slot in slots:
-        best = None
-        best_delta = tol
-        # avanzar puntero mientras no nos pasemos del +tol
+        best, best_delta = None, tol
         while idx < n:
             vt, vv = values[idx]
             delta = vt - slot
             if delta > tol:
                 break
             if abs(delta) <= tol and abs(delta) < best_delta:
-                best = (vt, vv)
+                best = (slot, vv)  # fijamos el timestamp EXACTO de la marca
                 best_delta = abs(delta)
             idx += 1
         if best:
             result.append(best)
-
     return result
-
 def calc_stats(values):
     if not values: return None
     arr = [v for _, v in values]
@@ -214,41 +198,122 @@ def pretty_title(feed):
                 .replace("_", " ")
                 .title())
 
+# ========= Gráfico (48h) =========
 def make_plot(feed, values, start_local, end_local):
-    """Gráfico temporal 8→8 con unidad en eje Y y ticks en hora Chile."""
-    if not values: return None
+    """Gráfico temporal (48h, marcas 30’), unidad en Y y tz local en ticks."""
+    if not values:
+        return None
 
     x, y = zip(*values)
     y = np.asarray(y, dtype=float)
-    y_smooth = gaussian_filter1d(y, sigma=1.2)
+    y_smooth = gaussian_filter1d(y, sigma=1.1)
 
     key_norm = norm_key_for_units(feed)
     unidad = UNIDADES.get(key_norm, "")
 
-    fig, ax = plt.subplots(figsize=(6.8, 3.2), dpi=130)
-    ax.plot(x, y_smooth, linewidth=1.8, color="#007ACC", alpha=0.9)
+    fig, ax = plt.subplots(figsize=(7.8, 3.2), dpi=130)
+    ax.plot(x, y_smooth, linewidth=1.8, alpha=0.9)
 
     ax.set_title(pretty_title(feed), fontsize=12, fontweight="bold", pad=8)
     ax.set_xlabel("Hora", fontsize=9)
     ax.set_ylabel(f"Valor {unidad}", fontsize=9)
 
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M", tz=TZ))
-    ax.xaxis.set_major_locator(mdates.HourLocator(interval=2, tz=TZ))
+    # Ticks X cada 4 horas (48h total → ~12 etiquetas)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d/%m %H:%M", tz=TZ))
+    ax.xaxis.set_major_locator(mdates.HourLocator(interval=4, tz=TZ))
     ax.set_xlim(start_local, end_local)
     plt.setp(ax.get_xticklabels(), rotation=0, ha="center", fontsize=8)
 
     ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=6))
-    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.4)
-    ax.set_facecolor("white")
+    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.35)
+
+    # líneas verticales en las 08:00 para separar los días
+    day1 = start_local
+    day2 = start_local + dt.timedelta(days=1)
+    for vline in (day1, day2, end_local):
+        ax.axvline(vline, color="gray", linestyle=":", alpha=0.6, linewidth=0.9)
+
+    ax.margins(x=0.01, y=0.06)
     fig.patch.set_facecolor("white")
-    ax.margins(x=0.02, y=0.06)
-    plt.tight_layout(pad=1.2)
+    ax.set_facecolor("white")
+    plt.tight_layout(pad=1.0)
 
     path = Path(f"/tmp/{feed}.png")
     plt.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return str(path)
 
+# ========= MAIN: ventana de 2 días (48h) 08:00 → 08:00 de hoy =========
+def main():
+    now_local = dt.datetime.now(TZ)
+    today_8am = now_local.replace(hour=8, minute=0, second=0, microsecond=0)
+
+    # Siempre una ventana de 48h ya finalizada: anteayer 08:00 → hoy 08:00
+    if now_local >= today_8am:
+        start_local = today_8am - dt.timedelta(days=2)
+        end_local   = today_8am
+    else:
+        start_local = today_8am - dt.timedelta(days=3)
+        end_local   = today_8am - dt.timedelta(days=1)
+
+    # A la API: UTC (Adafruit IO trabaja en UTC); al graficar: local
+    start_iso = start_local.astimezone(pytz.UTC).isoformat()
+    end_iso   = end_local.astimezone(pytz.UTC).isoformat()
+
+    print(f"📆 Ventana local (48h): {start_local:%d-%b %H:%M} → {end_local:%d-%b %H:%M}")
+    print(f"🌐 Ventana UTC        : {start_iso} → {end_iso}")
+
+    summary = [
+        f"*📊 Reporte estación 48h ({end_local:%Y-%m-%d %H:%M})*",
+        f"🕗 Intervalo: {start_local:%d-%b %H:%M} → {end_local:%d-%b %H:%M}",
+        ""
+    ]
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_feed, feed, start_iso, end_iso): feed for feed in FEEDS}
+
+        for future in as_completed(futures):
+            feed = futures[future]
+            try:
+                data = future.result()
+                raw_vals = parse_raw(data)
+
+                # Verificación rápida (te ayuda a chequear cortes)
+                if raw_vals:
+                    print(f"🧪 {feed}: raw {raw_vals[0][0]} → {raw_vals[-1][0]} (n={len(raw_vals)})")
+
+                valores = downsample_30min(raw_vals, start_local, end_local, tolerance_minutes=15)
+
+                st = calc_stats(valores)
+                key_title = pretty_title(feed)
+                key_norm  = norm_key_for_units(feed)
+                suf       = UNIDADES.get(key_norm, "")
+
+                if not st:
+                    summary.append(f"• `{key_title}`: sin datos 📭")
+                    continue
+
+                trend = trend_symbol(st["first"], st["last"])
+
+                if "rele" in key_norm:
+                    estado = "💧 Riego ACTIVADO" if st["last"] >= 1 else "💤 Riego APAGADO"
+                    summary.append(f"• `{key_title}` → {estado}")
+                else:
+                    summary.append(
+                        f"• `{key_title}` (48h) → n={st['n']}, "
+                        f"min={st['min']:.2f}{suf}, max={st['max']:.2f}{suf}, "
+                        f"media={st['mean']:.2f}{suf}, σ={st['std']:.2f}, tendencia {trend}"
+                    )
+
+                img = make_plot(feed, valores, start_local, end_local)
+                if img:
+                    telegram_send_photo(img, caption=f"{key_title} 48h ({suf})")
+
+            except Exception as e:
+                summary.append(f"• `{feed}`: ⚠️ Error {e}")
+
+    telegram_send_text("\n".join(summary))
+    print("✅ Reporte 48h enviado con éxito.")
 # =========================
 # 📲 TELEGRAM
 # =========================
