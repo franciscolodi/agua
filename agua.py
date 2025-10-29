@@ -83,37 +83,60 @@ def safe_get(url, params, retries=4, backoff=1.5, timeout=20):
     return []
 
 def fetch_feed(feed_key, start_iso, end_iso):
-    """Descarga hasta 1000 puntos del feed entre start/end (ISO-8601)."""
+    """Descarga TODOS los datos del feed en el rango (pagina de 1000 en 1000)."""
     url = f"{BASE_URL}/{feed_key}/data"
-    params = {"start_time": start_iso, "end_time": end_iso, "limit": 1000}
-    print(f"📡 {feed_key} → {params['start_time']} → {params['end_time']}")
-    return safe_get(url, params)
+    limit = 1000
+    page = 1
+    out = []
+
+    while True:
+        params = {
+            "start_time": start_iso,  # en UTC (ya lo haces)
+            "end_time": end_iso,      # en UTC
+            "limit": limit,
+            "page": page,
+            # opcional, si tu cuenta lo soporta:
+            # "include": "value,created_at",
+            # "direction": "asc"
+        }
+        print(f"📡 {feed_key} page={page}")
+        batch = safe_get(url, params)
+        if not batch:
+            break
+        out.extend(batch)
+        if len(batch) < limit:
+            break
+        page += 1
+
+    return out
+
 
 # =========================
 # 🧮 PARSING & DOWNSAMPLING
 # =========================
 def parse_raw(data):
-    """Convierte a hora local sin aplicar doble offset."""
+    """[(t_local, valor_float)] ordenada; detecta si created_at viene en UTC o local."""
     parsed = []
-    for d in data:
+    for d in data or []:
         try:
             v = float(d["value"])
             t_raw = d["created_at"]
-
-            # Si el timestamp ya incluye zona -03:00, no convertir.
             if t_raw.endswith("-03:00"):
+                # Ya viene en hora Chile
                 t = dt.datetime.fromisoformat(t_raw)
-            # Si viene en UTC ("Z" o "+00:00"), convertir a Chile.
             elif "Z" in t_raw or t_raw.endswith("+00:00"):
+                # UTC → Chile
                 t = dt.datetime.fromisoformat(t_raw.replace("Z", "+00:00")).astimezone(TZ)
-            # Sin sufijo → asumir local.
             else:
-                t = TZ.localize(dt.datetime.fromisoformat(t_raw))
-
+                # Sin zona → asume local
+                t = dt.datetime.fromisoformat(t_raw)
+                if t.tzinfo is None:
+                    t = TZ.localize(t)
             parsed.append((t, v))
-        except Exception as e:
-            print(f"⚠️ parse_raw error {e} → {d.get('created_at')}")
+        except Exception:
+            continue
     return sorted(parsed, key=lambda x: x[0])
+
 
 
 
@@ -259,9 +282,9 @@ def main():
         start_local = today_8am - dt.timedelta(days=2)
         end_local = today_8am - dt.timedelta(days=1)
 
-    # Enviar a la API en UTC (lo correcto para IO)
     start_iso = start_local.astimezone(pytz.UTC).isoformat()
     end_iso   = end_local.astimezone(pytz.UTC).isoformat()
+
 
     print(f"📆 Rango local: {start_local:%d-%b %H:%M} → {end_local:%d-%b %H:%M}")
     print(f"🌐 Rango UTC  : {start_iso} → {end_iso}")
