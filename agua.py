@@ -88,29 +88,41 @@ def trend_symbol(first, last, threshold=0.1):
 import matplotlib.dates as mdates
 
 def make_plot(feed, values):
-    """Gráfico temporal con eje X en horas y formato limpio."""
+    """Genera gráfico temporal con eje X por hora y estilo legible."""
     if not values:
         return None
 
     x, y = zip(*values)
-    fig, ax = plt.subplots(figsize=(6, 3), dpi=120)
-    ax.plot(x, y, linewidth=1.6, color="#007ACC", alpha=0.9)
 
-    # formato de hora legible
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
-    fig.autofmt_xdate(rotation=45)
+    fig, ax = plt.subplots(figsize=(6.5, 3.2), dpi=130)
+    ax.plot(x, y, linewidth=1.8, color="#0072B2", alpha=0.9)
 
-    ax.set_title(feed.replace("estacion.", "").replace("estacion-dot-", "").replace("_", " ").title(), fontsize=11, weight="bold")
+    # Título mejorado
+    titulo = feed.replace("estacion.", "").replace("estacion-dot-", "").replace("_", " ").title()
+    ax.set_title(titulo, fontsize=11, fontweight="bold", pad=10)
+
+    # Etiquetas
     ax.set_xlabel("Hora", fontsize=9)
     ax.set_ylabel("Valor", fontsize=9)
+
+    # Eje X formateado en horas
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", fontsize=8)
+
+    # Eje Y con cuadrícula suave
     ax.grid(alpha=0.3, linestyle="--")
 
+    # Márgenes visuales
+    ax.margins(x=0.02, y=0.1)
     plt.tight_layout()
+
+    # Guardar
     path = Path(f"/tmp/{feed}.png")
-    plt.savefig(path)
+    plt.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return str(path)
+
 
 
 def telegram_send_text(msg):
