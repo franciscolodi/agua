@@ -15,11 +15,18 @@ IO_KEY = os.getenv("IO_KEY")
 BASE_URL = f"https://io.adafruit.com/api/v2/{IO_USERNAME}/feeds"
 
 FEEDS = [
-    "estacion.temperatura", "estacion.humedad", "estacion.presion",
-    "estacion.altitud", "estacion.punto_rocio", "estacion.sensacion_termica",
-    "estacion.densidad_aire", "estacion.humedad_suelo", "estacion.luz",
+    "estacion.temperatura",
+    "estacion.humedad",
+    "estacion.presion",
+    "estacion.altitud",
+    "estacion-dot-punto-rocio",
+    "estacion-dot-sensacion-termica",
+    "estacion-dot-densidad-aire",
+    "estacion-dot-humedad-suelo",
+    "estacion.luz",
     "estacion.rele_control"
 ]
+
 
 if not all([TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, IO_USERNAME, IO_KEY]):
     sys.exit("❌ ERROR: Faltan variables de entorno necesarias.")
@@ -78,18 +85,33 @@ def trend_symbol(first, last, threshold=0.1):
     if abs(delta) < threshold: return "→"
     return "↑" if delta > 0 else "↓"
 
+import matplotlib.dates as mdates
+
 def make_plot(feed, values):
-    if not values: return None
+    """Gráfico temporal con eje X en horas y formato limpio."""
+    if not values:
+        return None
+
     x, y = zip(*values)
-    plt.figure(figsize=(5, 2.5), dpi=100)
-    plt.plot(x, y, linewidth=1.3)
-    plt.title(feed.replace("estacion.", "").title())
-    plt.grid(alpha=0.3)
+    fig, ax = plt.subplots(figsize=(6, 3), dpi=120)
+    ax.plot(x, y, linewidth=1.6, color="#007ACC", alpha=0.9)
+
+    # formato de hora legible
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+    fig.autofmt_xdate(rotation=45)
+
+    ax.set_title(feed.replace("estacion.", "").replace("estacion-dot-", "").replace("_", " ").title(), fontsize=11, weight="bold")
+    ax.set_xlabel("Hora", fontsize=9)
+    ax.set_ylabel("Valor", fontsize=9)
+    ax.grid(alpha=0.3, linestyle="--")
+
     plt.tight_layout()
     path = Path(f"/tmp/{feed}.png")
     plt.savefig(path)
-    plt.close()
+    plt.close(fig)
     return str(path)
+
 
 def telegram_send_text(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
