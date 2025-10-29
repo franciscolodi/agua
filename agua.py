@@ -65,60 +65,52 @@ def parse_raw(data):
             continue
     return sorted(parsed, key=lambda x: x[0])
 
-def downsample_30min(values, start_local, end_local, tolerance_minutes=10):
+def downsample_30min(values, start_local, end_local, tolerance_minutes=15):
     """
-    Alinea los datos a ranuras de 30 minutos: HH:00 y HH:30.
-    Para cada ranura toma el punto más cercano dentro de ±tolerance_minutes.
-    Si no hay datos cercanos, omite la ranura.
+    Reduce los datos a un punto cada 30 minutos (HH:00 y HH:30).
+    Elige el valor más cercano a cada marca dentro de ±tolerance_minutes.
     """
     if not values:
         return []
 
-    # índices temporales destino
+    step = dt.timedelta(minutes=30)
+    tol = dt.timedelta(minutes=tolerance_minutes)
+
+    # Crear slots de referencia
     slots = []
     t = start_local.replace(minute=0, second=0, microsecond=0)
-    # Si el inicio es 08:00 exacto, perfecto; si no, ajustamos al múltiplo más cercano
-    if start_local.minute >= 30:
-        t = t.replace(hour=start_local.hour, minute=30)
-    else:
-        t = t.replace(hour=start_local.hour, minute=0)
-
     while t <= end_local:
         slots.append(t)
-        t += dt.timedelta(minutes=30)
+        t += step
 
-    # puntero de valores
-    vi = 0
-    out = []
-    tol = dt.timedelta(minutes=tolerance_minutes)
+    result = []
+    idx = 0
+    n = len(values)
 
     for slot in slots:
         best = None
-        best_dt = None
-        # avanzar mientras no nos pasemos del slot+tol
-        while vi < len(values):
-            vt, vv = values[vi]
-            if vt < slot - tol:
-                vi += 1
-                continue
-            if vt > slot + tol:
+        best_delta = tol  # valor inicial máximo permitido
+
+        # Avanzar puntero hasta salir del rango
+        while idx < n:
+            vt, vv = values[idx]
+            delta = vt - slot
+
+            # Si ya pasamos el rango tolerado, salimos
+            if delta > tol:
                 break
-            # candidato dentro de tolerancia
-            delta = abs(vt - slot)
-            if (best_dt is None) or (delta < best_dt):
-                best_dt = delta
+
+            # Si estamos dentro de tolerancia, evaluar distancia
+            if abs(delta) <= tol and abs(delta) < best_delta:
                 best = (vt, vv)
-            vi += 1
+                best_delta = abs(delta)
+
+            idx += 1
+
         if best:
-            out.append(best)
+            result.append(best)
 
-    # asegurar extremos si existen
-    if out and out[0][0] > start_local and (values[0][0] - start_local) <= tol:
-        out = [values[0]] + out
-    if out and out[-1][0] < end_local and (end_local - values[-1][0]) <= tol:
-        out = out + [values[-1]]
-
-    return out
+    return result
 
 def calc_stats(values):
     if not values: return None
