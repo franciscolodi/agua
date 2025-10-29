@@ -231,9 +231,11 @@ def main():
         start_local = today_8am - dt.timedelta(days=2)
         end_local = today_8am - dt.timedelta(days=1)
     
-    # Enviar rango en UTC (Adafruit espera UTC)
-    start_iso = start_local.astimezone(pytz.UTC).isoformat()
-    end_iso   = end_local.astimezone(pytz.UTC).isoformat()
+
+    # Enviar en hora local con offset de Chile (Adafruit interpreta correctamente)
+    start_iso = start_local.isoformat()
+    end_iso   = end_local.isoformat()
+
 
 
 
