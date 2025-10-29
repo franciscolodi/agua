@@ -230,17 +230,17 @@ def telegram_send_photo(path, caption=""):
 def main():
     now_local = dt.datetime.now(TZ)
 
-        # --- Rango fijo 8→8 del día anterior ---
+    # --- Calcular rango horario real de las últimas 24 h (8 → 8) ---
     today_8am = now_local.replace(hour=8, minute=0, second=0, microsecond=0)
+    
     if now_local >= today_8am:
-        # Después de las 08:00 → usamos rango de ayer 08:00 → hoy 08:00
-        end_local = today_8am
+        # Estamos después de las 8 am → usar ayer 08:00 → hoy 08:00
         start_local = today_8am - dt.timedelta(days=1)
+        end_local = today_8am
     else:
-        # Antes de las 08:00 → anteayer 08:00 → ayer 08:00
-        end_local = today_8am - dt.timedelta(days=1)
+        # Antes de las 8 am → usar anteayer 08:00 → ayer 08:00
         start_local = today_8am - dt.timedelta(days=2)
-
+        end_local = today_8am - dt.timedelta(days=1)
     # API en UTC
     start_iso = start_local.astimezone(pytz.UTC).isoformat()
     end_iso   = end_local.astimezone(pytz.UTC).isoformat()
