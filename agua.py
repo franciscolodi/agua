@@ -123,48 +123,78 @@ def telegram_send_photo(path, caption=""):
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption}, files={"photo": f})
 
 # =========================================================
-# 🚀 PROCESO PRINCIPAL (PARALELO)
+# 🚀 PROCESO PRINCIPAL (PARALELO) - INTERVALO 8:00 a 8:00
 # =========================================================
 def main():
-    now = dt.datetime.now(TZ)
-    start = (now - dt.timedelta(days=1)).astimezone(pytz.UTC).isoformat()
-    end = now.astimezone(pytz.UTC).isoformat()
+    now_local = dt.datetime.now(TZ)
 
-    summary = [f"*📊 Reporte diario estación ({now:%Y-%m-%d})*", ""]
+    # --- Definir rango horario de 24h desde las 8:00 ---
+    today_8am = now_local.replace(hour=8, minute=0, second=0, microsecond=0)
+    if now_local.hour < 8:
+        # Si todavía no son las 8, usamos el ciclo anterior
+        end_local = today_8am
+        start_local = today_8am - dt.timedelta(days=1)
+    else:
+        # Si ya pasaron las 8, usamos el ciclo actual
+        start_local = today_8am
+        end_local = today_8am + dt.timedelta(days=1)
 
+    # --- Convertir a UTC para Adafruit IO ---
+    start = start_local.astimezone(pytz.UTC).isoformat()
+    end = end_local.astimezone(pytz.UTC).isoformat()
+
+    print(f"📆 Rango temporal: {start_local:%d-%b %H:%M} → {end_local:%d-%b %H:%M}")
+
+    # --- Encabezado del resumen ---
+    summary = [
+        f"*📊 Reporte estación ({end_local:%Y-%m-%d %H:%M})*",
+        f"🕗 Intervalo: {start_local:%d-%b %H:%M} → {end_local:%d-%b %H:%M}",
+        ""
+    ]
+
+    # --- Unidades ---
     unidades = {
         "temperatura": "°C", "humedad": "%", "presion": "hPa",
         "altitud": "m", "punto_rocio": "°C", "sensacion_termica": "°C",
         "densidad_aire": "kg/m³", "humedad_suelo": "%", "luz": "lux",
     }
 
+    # --- Ejecución paralela para rapidez ---
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(fetch_feed, feed, start, end): feed for feed in FEEDS}
+
         for future in as_completed(futures):
             feed = futures[future]
             try:
                 data = future.result()
-                valores = parse_feed_data(data, interval_minutes=30)
+                valores = parse_feed_data(data, interval_minutes=30)  # cada 30 minutos
                 st = calc_stats(valores)
 
                 if not st:
                     summary.append(f"• `{feed}`: sin datos 📭")
                     continue
 
-                key = feed.replace("estacion.", "")
+                # Limpieza del nombre de feed
+                key = (
+                    feed.replace("estacion.", "")
+                        .replace("estacion-dot-", "")
+                        .replace("_", " ")
+                )
                 trend = trend_symbol(st["first"], st["last"])
 
+                # Caso especial: control de riego
                 if "rele" in key:
                     estado = "💧 Riego ACTIVADO" if st["last"] >= 1 else "💤 Riego APAGADO"
                     summary.append(f"• `{key}` → {estado}")
                     continue
 
-                suf = unidades.get(key, "")
+                suf = unidades.get(key.strip(), "")
                 summary.append(
                     f"• `{key}` → n={st['n']}, min={st['min']:.2f}{suf}, max={st['max']:.2f}{suf}, "
                     f"media={st['mean']:.2f}{suf}, σ={st['std']:.2f}, tendencia {trend}"
                 )
 
+                # Enviar gráfico
                 img = make_plot(feed, valores)
                 if img:
                     telegram_send_photo(img, caption=f"{key.title()} ({suf})")
@@ -172,9 +202,9 @@ def main():
             except Exception as e:
                 summary.append(f"• `{feed}`: ⚠️ Error {e}")
 
+    # --- Enviar resumen a Telegram ---
     telegram_send_text("\n".join(summary))
     print("✅ Reporte diario enviado con éxito.")
-
 
 if __name__ == "__main__":
     main()
