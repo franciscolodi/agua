@@ -93,17 +93,27 @@ def fetch_feed(feed_key, start_iso, end_iso):
 # 🧮 PARSING & DOWNSAMPLING
 # =========================
 def parse_raw(data):
-    """[(t_local, valor_float)] ordenada."""
-    out = []
-    for d in data or []:
+    """Convierte a [(t_local, valor_float)] sin doble conversión."""
+    parsed = []
+    for d in data:
         try:
             v = float(d["value"])
-            # created_at es UTC (Z). Convertimos a hora Chile para graficar.
-            t = dt.datetime.fromisoformat(d["created_at"].replace("Z", "+00:00")).astimezone(TZ)
-            out.append((t, v))
+            t_raw = d["created_at"]
+
+            # Detectar si el timestamp ya incluye zona horaria
+            if "Z" in t_raw or t_raw.endswith("+00:00"):
+                # UTC → convertir a Chile
+                t = dt.datetime.fromisoformat(t_raw.replace("Z", "+00:00")).astimezone(TZ)
+            else:
+                # Ya local → dejar tal cual
+                t = dt.datetime.fromisoformat(t_raw)
+                if t.tzinfo is None:
+                    t = TZ.localize(t)
+            parsed.append((t, v))
         except Exception:
             continue
-    return sorted(out, key=lambda x: x[0])
+    return sorted(parsed, key=lambda x: x[0])
+
 
 def downsample_30min(values, start_local, end_local, tolerance_minutes=15):
     """
