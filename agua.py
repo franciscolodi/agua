@@ -41,11 +41,11 @@ FEEDS = [
     "estacion.humedad",
     "estacion.presion",
     "estacion.altitud",
+    "estacion.luz",
     "estacion-dot-punto-rocio",
     "estacion-dot-sensacion-termica",
     "estacion-dot-densidad-aire",
     "estacion-dot-humedad-suelo",
-    "estacion.luz",
     "estacion-dot-rele-control",  # si tu feed es 'estacion.rele_control', cámbialo aquí
 ]
 
