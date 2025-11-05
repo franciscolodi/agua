@@ -40,7 +40,7 @@ FEEDS = [
     "estacion-dot-densidad-aire",
     "estacion-dot-humedad-suelo",
     "estacion.luz",
-    "estacion.rele_control",  # verifica esta key en IO; si es 'estacion-dot-rele-control', cámbiala
+    "estacion-dot-rele-control",  # confirmado: el grupo "Default" usa el prefijo "estacion-dot-"
 ]
 
 UNIDADES = {
